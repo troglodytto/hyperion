@@ -186,11 +186,39 @@ impl HttpServer {
 
                     dbg!(total_extensions_length);
 
+                    // @todo Make the following Dynamic
                     let extension_type =
                         u16::from_ne_bytes([buffer[cursor + 1], buffer[cursor + 2]]);
                     cursor += 2;
 
                     dbg!(extension_type);
+
+                    let extension_data_length =
+                        u16::from_ne_bytes([buffer[cursor + 1], buffer[cursor + 2]]);
+                    cursor += 2;
+
+                    dbg!(extension_data_length);
+
+                    let extension_list_entry_length =
+                        u16::from_ne_bytes([buffer[cursor + 1], buffer[cursor + 2]]);
+                    cursor += 2;
+
+                    dbg!(extension_list_entry_length);
+
+                    let extension_list_entry_type = buffer[cursor];
+                    cursor += 1;
+                    dbg!(extension_list_entry_type);
+
+                    let hostname_length = u16::from_ne_bytes([buffer[cursor + 1], buffer[cursor]]);
+                    cursor += 2;
+
+                    dbg!(hostname_length);
+
+                    let hostname = &buffer[cursor..cursor + hostname_length as usize];
+
+                    if let Ok(hostname) = std::str::from_utf8(hostname) {
+                        dbg!(hostname);
+                    };
 
                     for (idx, byte) in buffer[5..].iter().enumerate() {
                         if idx > cursor - 5 {
