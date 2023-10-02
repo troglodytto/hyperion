@@ -31,7 +31,7 @@ use http_router::HttpRouter;
 use crate::http_header::HttpHeader;
 use crate::http_request::HttpStream;
 use crate::http_response::HttpResponse;
-use crate::http_router::{RequestHandler, RequestIdentifier};
+use crate::http_router::RequestIdentifier;
 use crate::http_status::HttpStatus;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
