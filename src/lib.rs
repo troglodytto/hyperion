@@ -26,13 +26,18 @@ pub mod http_method;
 /// Type Definitions / Impls for rounting
 pub mod http_router;
 
-use http_router::HttpRouter;
+mod tls;
 
 use crate::http_header::HttpHeader;
 use crate::http_request::HttpStream;
 use crate::http_response::HttpResponse;
 use crate::http_router::RequestIdentifier;
 use crate::http_status::HttpStatus;
+use crate::tls::cipher_suite::{self, CipherSuite};
+use crate::tls::compression_methods::CompressionMethods;
+use crate::tls::{HandshakeHeader, RecordHeader, TLSVersion};
+use http_router::HttpRouter;
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -92,6 +97,7 @@ impl HttpServer {
     }
 
     /// Starts listening on the given port
+    #[allow(clippy::too_many_lines)]
     pub fn listen(&self) {
         eprintln!("\x1B[2J\x1B[1;1H"); // Clear Screen
         eprintln!("Server running on http://localhost:8000");
@@ -100,9 +106,106 @@ impl HttpServer {
             if let Ok((mut stream, _socket_addr)) = self.listener.accept() {
                 let router = self.router.clone();
 
-                let thread = std::thread::spawn(move || handle_request(&mut stream, &router));
+                let thread = std::thread::spawn(move || {
+                    let mut buffer = vec![0; 512];
+                    let read_byte_count = stream.read(&mut buffer).unwrap();
 
-                self.thread_pool.borrow_mut().push(thread);
+                    let mut cursor = 0;
+
+                    let record_header = RecordHeader::from(&buffer[cursor..cursor + 5]);
+                    cursor += 5;
+                    dbg!(record_header);
+
+                    let handshake_header = HandshakeHeader::from(&buffer[cursor..cursor + 4]);
+                    cursor += 4;
+                    dbg!(&handshake_header);
+
+                    let client_version = TLSVersion::from([buffer[cursor], buffer[cursor + 1]]);
+                    cursor += 1;
+                    dbg!(&client_version);
+
+                    let client_random = &buffer[cursor..cursor + 32];
+                    cursor += 32;
+
+                    println!(
+                        "[{}:{}] client_random = {client_random:0>2x?}",
+                        file!(),
+                        line!()
+                    );
+
+                    let session_id_length = buffer[cursor + 1];
+                    cursor += 1;
+                    dbg!(session_id_length);
+
+                    let session_id = &buffer[cursor..cursor + session_id_length as usize];
+                    cursor += session_id_length as usize;
+
+                    println!("[{}:{}] session_id = {session_id:0>2x?}", file!(), line!());
+
+                    let cipher_suite_byte_length =
+                        u16::from_ne_bytes([buffer[cursor + 2], buffer[cursor + 1]]);
+                    cursor += 2;
+                    dbg!(cipher_suite_byte_length);
+
+                    let cipher_suite =
+                        &buffer[cursor + 1..cursor + 1 + cipher_suite_byte_length as usize];
+                    cursor += cipher_suite_byte_length as usize + 1;
+
+                    let cipher_suite = cipher_suite.chunks(2).map(CipherSuite::from);
+
+                    let cipher_suite_length = cipher_suite.len();
+
+                    dbg!(cipher_suite_length);
+
+                    println!("[{}:{}] cipher_suites:", file!(), line!());
+
+                    for suite in cipher_suite {
+                        println!("  - {suite:?}");
+                    }
+
+                    let compression_methods_length = buffer[cursor];
+                    dbg!(compression_methods_length);
+                    cursor += 1;
+
+                    let compression_methods = buffer
+                        [cursor..cursor + compression_methods_length as usize]
+                        .iter()
+                        .map(|method| CompressionMethods::from(*method));
+
+                    cursor += compression_methods_length as usize;
+
+                    println!("[{}:{}] compression_methods:", file!(), line!());
+
+                    for compression_method in compression_methods {
+                        println!("  - {compression_method:?}");
+                    }
+
+                    let total_extensions_length =
+                        u16::from_ne_bytes([buffer[cursor + 1], buffer[cursor + 2]]);
+                    cursor += 2;
+
+                    dbg!(total_extensions_length);
+
+                    let extension_type =
+                        u16::from_ne_bytes([buffer[cursor + 1], buffer[cursor + 2]]);
+                    cursor += 2;
+
+                    dbg!(extension_type);
+
+                    for (idx, byte) in buffer[5..].iter().enumerate() {
+                        if idx > cursor - 5 {
+                            print!("{byte:0>2x} ");
+                        } else {
+                            print!("⬛ ");
+                        }
+
+                        if idx % 16 == 15 {
+                            println!();
+                        }
+                    }
+                });
+
+                // self.thread_pool.borrow_mut().push(thread);
             }
         }
     }
