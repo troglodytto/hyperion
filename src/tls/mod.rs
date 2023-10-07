@@ -1,5 +1,4 @@
 pub mod cipher_suite;
-
 pub mod compression_methods;
 
 #[derive(Debug)]
@@ -18,8 +17,9 @@ pub enum TLSVersion {
 }
 
 impl From<[u8; 2]> for TLSVersion {
-    fn from(value: [u8; 2]) -> Self {
-        let version = u16::from_ne_bytes([value[1], value[0]]);
+    #[allow(clippy::similar_names)]
+    fn from([msb, lsb]: [u8; 2]) -> Self {
+        let version = u16::from_ne_bytes([lsb, msb]);
 
         match version {
             0x301 => TLSVersion::TLS1,

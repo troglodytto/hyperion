@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
 macro_rules! header_impl {
-
     ($($rfc_section:literal $name:literal -> $variant:ident,)*) => {
         /// Representation of a HTTP Header
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
@@ -26,7 +25,7 @@ macro_rules! header_impl {
             pub fn new(name: &str, value: &str) -> Result<HttpHeader> {
                 match name {
                     $($name => Ok(HttpHeader::$variant(value.to_string())),)*
-                    _ => Err(anyhow!("Unknown header")),
+                    header => Err(anyhow!("Unknown header '{header}'")),
                 }
             }
 
@@ -34,7 +33,7 @@ macro_rules! header_impl {
             #[must_use]
             pub fn name(&self) -> String {
                 match self {
-                    $($crate::HttpHeader::$variant(_) => $name.to_string(),)*
+                    $($crate::http::header::HttpHeader::$variant(_) => $name.to_string(),)*
                 }
             }
 
@@ -42,7 +41,7 @@ macro_rules! header_impl {
             #[must_use]
             pub fn value(&self) -> String {
                 match self {
-                    $($crate::HttpHeader::$variant(value) => value.to_string(),)*
+                    $($crate::http::header::HttpHeader::$variant(value) => value.to_string(),)*
                 }
             }
         }
@@ -56,12 +55,15 @@ header_impl!(
     14.4 "Accept-Language" -> AcceptLanguage,
     14.5 "Accept-Ranges" -> AcceptRanges,
     14.6 "Age" -> Age,
+    14.9 "Cache-Control" -> CacheControl,
     14.8 "Authorization" -> Authorization,
+    14.10 "Connection" -> Connection,
     14.13 "Content-Length" -> ContentLength,
     14.16 "Content-Range" -> ContentRange,
     14.17 "Content-Type" -> ContentType,
     14.18 "Date" -> Date,
     14.23 "Host" -> Host,
+    14.32 "Pragma" -> Pragma,
     14.43 "User-Agent" -> UserAgent,
 );
 

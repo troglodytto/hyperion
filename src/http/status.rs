@@ -15,7 +15,7 @@ macro_rules! status_impl {
         impl From<&HttpStatus> for u16 {
             fn from(value: &HttpStatus) -> Self {
                 match value {
-                    $($crate::HttpStatus::$variant => $status_code,)*
+                    $($crate::http::status::HttpStatus::$variant => $status_code,)*
                 }
             }
         }
@@ -23,7 +23,7 @@ macro_rules! status_impl {
         impl AsRef<str> for HttpStatus {
             fn as_ref(&self) -> &str {
                 match self {
-                    $($crate::HttpStatus::$variant => $status_text,)*
+                    $($crate::http::status::HttpStatus::$variant => $status_text,)*
                 }
             }
         }
@@ -39,7 +39,7 @@ status_impl!(
     200 "Ok" -> Ok,
     201 "Created" -> Created,
     202 "Accepted" -> Accepted,
-    203 "Non-Authorotative Information" -> NonAuthororativeInformation,
+    203 "Non-Authoritative Information" -> NonAuthoritativeInformation,
     204 "No Content" -> NoContent,
     205 "Reset Content" -> ResetContent,
     206 "Partial Content" -> PartialContent,

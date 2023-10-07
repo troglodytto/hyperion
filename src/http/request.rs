@@ -1,16 +1,17 @@
-use crate::http_error;
-use crate::http_error::HttpError;
-use crate::http_header::HttpHeader;
-use crate::http_method::HttpMethod;
+use crate::error;
+use crate::http::error::Error;
+use crate::http::header::HttpHeader;
+use crate::http::method::Method;
 use serde::Serialize;
+use std::fmt::Display;
 use std::io::Read;
 use std::net::TcpStream;
 
 /// Representation of a HTTP Request
 #[derive(Debug, Serialize, Clone)]
-pub struct HttpRequest {
+pub struct Request {
     /// The Method of the HTTP request
-    pub method: HttpMethod,
+    pub method: Method,
     /// The Path of the HTTP request
     pub path: String,
 
@@ -24,57 +25,79 @@ pub struct HttpRequest {
     pub body: Option<Vec<u8>>,
 }
 
+impl Display for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let method = format!("{:?}", self.method).to_uppercase();
+
+        write!(f, "{} {} {}\r\n", method, self.path, self.http_version)?;
+
+        for header in &self.headers {
+            write!(f, "{header}\r\n")?;
+        }
+
+        write!(f, "\r\n")?;
+
+        if let Some(body) = &self.body {
+            let serialized_body = String::from_utf8(body.clone()).map_err(|_| std::fmt::Error)?;
+
+            write!(f, "{serialized_body}")?;
+        }
+
+        Ok(())
+    }
+}
+
 /// Implementation of parsing an HTTP Response from a stream of bytes
 pub trait HttpStream {
     /// Function that is used to parse a HTTP Request
     /// # Errors
     /// - If the stream contains invalid data
     /// - If something goes wrong during the parsing
-    fn parse(&mut self) -> anyhow::Result<HttpRequest, HttpError>;
+    fn parse(&mut self) -> anyhow::Result<Request, Error>;
 }
 
 impl HttpStream for Vec<u8> {
-    fn parse(&mut self) -> anyhow::Result<HttpRequest, HttpError> {
+    fn parse(&mut self) -> anyhow::Result<Request, Error> {
         let req_string = String::from_utf8(self.clone())?;
 
         let mut req_string = req_string.split("\r\n").filter(|line| !line.is_empty());
 
         let req_line = req_string
             .next()
-            .ok_or(http_error!(BadRequest, "Invalid request line"))?;
+            .ok_or(error!(BadRequest, "Invalid request line"))?;
 
         let mut req_line = req_line.split(' ');
 
         let method = req_line
             .next()
-            .ok_or(http_error!(BadRequest, "Missing Method"))?;
+            .ok_or(error!(BadRequest, "Missing Method"))?;
 
-        let path = req_line
-            .next()
-            .ok_or(http_error!(BadRequest, "Invalid Path"))?;
+        let path = req_line.next().ok_or(error!(BadRequest, "Invalid Path"))?;
 
         let http_version = req_line
             .next()
-            .ok_or(http_error!(BadRequest, "Invalid HTTP Version"))?;
+            .ok_or(error!(BadRequest, "Invalid HTTP Version"))?;
 
         // Leveraging serde to deserialize methods instead of manually converting from string to [HttpMethod]
-        let method: HttpMethod = serde_json::from_str(&format!("\"{method}\""))
-            .map_err(|_| http_error!(BadRequest, format!("Unknown HTTP Method: {method}")))?;
+        let method: Method = serde_json::from_str(&format!("\"{method}\""))
+            .map_err(|_| error!(BadRequest, format!("Unknown HTTP Method: {method}")))?;
 
         let mut headers = vec![];
 
         for line in req_string {
             let Some((header_name, value)) = line.split_once(": ") else {
-                return Err(http_error!(BadRequest, format!("Invalid Header: {line}")));
+                return Err(error!(BadRequest, format!("Invalid Header: {line}")));
             };
 
-            let header = HttpHeader::new(header_name, value)
-                .map_err(|error| http_error!(BadRequest, error.to_string()))?;
-
-            headers.push(header);
+            match HttpHeader::new(header_name, value)
+                .map_err(|error| error!(BadRequest, error.to_string()))
+            {
+                Ok(h) => headers.push(h),
+                Err(er) => println!("{er:?}"),
+            };
         }
 
-        Ok(HttpRequest {
+        Ok(Request {
             method,
             path: path.to_string(),
             http_version: http_version.to_string(),
@@ -85,29 +108,29 @@ impl HttpStream for Vec<u8> {
 }
 
 impl HttpStream for TcpStream {
-    fn parse(&mut self) -> anyhow::Result<HttpRequest, HttpError> {
-        let mut buffer = vec![0; 32];
-        let mut req_buf = vec![];
-        let mut body_bytes = vec![];
+    fn parse(&mut self) -> anyhow::Result<Request, Error> {
+        let mut buffer = vec![0; 2048];
+        let mut request_buffer = vec![];
+        let mut body_buffer = vec![];
 
         'parse_loop: loop {
             let read_byte_count = self.read(&mut buffer)?;
 
             for (idx, window) in buffer.windows(4).enumerate() {
                 if window == [13, 10, 13, 10] || read_byte_count < 4 {
-                    req_buf.extend(&buffer[..idx]);
+                    request_buffer.extend(&buffer[..idx]);
 
-                    // If there is an overflow, add it to body bytes buffer
-                    body_bytes.extend(&buffer[idx..]);
+                    // Add any remaining overflow to body bytes buffer
+                    body_buffer.extend(&buffer[idx + 4..]);
 
                     break 'parse_loop;
                 }
             }
 
-            req_buf.extend(&buffer[..read_byte_count]);
+            request_buffer.extend(&buffer[..read_byte_count]);
         }
 
-        let mut request = req_buf.parse()?;
+        let mut request = request_buffer.parse()?;
 
         if let Some(content_length) = request
             .headers
@@ -118,16 +141,16 @@ impl HttpStream for TcpStream {
             // This condition is to check the following
             // Do we need to extend? or is the overflow of bytes above it enough to store all the remaining body bytes
             // i.e Are there any remaining bytes to read other than the overflow above
-            if content_length as usize > body_bytes.len() {
+            if content_length as usize > body_buffer.len() {
                 buffer.clear();
                 buffer.resize(content_length as usize, 0);
 
                 let read_byte_count = self.read(&mut buffer)?;
 
-                body_bytes.extend(&buffer[..read_byte_count]);
+                body_buffer.extend(&buffer[..read_byte_count]);
             }
 
-            request.body = Some(body_bytes);
+            request.body = Some(body_buffer);
         }
 
         Ok(request)
