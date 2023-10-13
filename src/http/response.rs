@@ -1,9 +1,6 @@
 use crate::http::{header::HttpHeader, status::HttpStatus};
 use serde::Serialize;
-use std::{
-    borrow::BorrowMut,
-    fmt::{Debug, Display},
-};
+use std::fmt::{Debug, Display};
 
 /// Representation of an HTTP body
 pub trait Body: Debug {

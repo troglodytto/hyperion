@@ -1,5 +1,3 @@
-use std::ops::DerefMut;
-
 use super::{
     method::Method,
     request::Request,
